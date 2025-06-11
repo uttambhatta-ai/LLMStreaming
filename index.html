@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Voice Assistant - Live Conversation</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            overflow: hidden;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            text-align: center;
+            max-width: 700px;
+            width: 90%;
+            height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #fff, #f0f0f0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            opacity: 0.8;
+            margin-bottom: 30px;
+        }
+
+        .conversation-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .status-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .mic-button {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            font-size: 2.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 25px rgba(255, 107, 107, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .mic-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 12px 35px rgba(255, 107, 107, 0.4);
+        }
+
+        .mic-button.listening {
+            background: linear-gradient(45deg, #2ed573, #17c0eb);
+            animation: pulse 2s infinite;
+        }
+
+        .mic-button.speaking {
+            background: linear-gradient(45deg, #ffa502, #ff6348);
+            animation: glow 1.5s infinite alternate;
+        }
+
+        .mic-button.connecting {
+            background: linear-gradient(45deg, #a55eea, #26de81);
+            animation: spin 2s linear infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 8px 25px rgba(46, 213, 115, 0.3); }
+            50% { transform: scale(1.1); box-shadow: 0 12px 35px rgba(46, 213, 115, 0.6); }
+            100% { transform: scale(1); box-shadow: 0 8px 25px rgba(46, 213, 115, 0.3); }
+        }
+
+        @keyframes glow {
+            0% { box-shadow: 0 8px 25px rgba(255, 165, 2, 0.3); }
+            100% { box-shadow: 0 12px 35px rgba(255, 165, 2, 0.8); }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .status {
+            font-size: 1.2rem;
+            font-weight: 500;
+            min-height: 30px;
+            transition: all 0.3s ease;
+        }
+
+        .status.ready { color: #2ed573; }
+        .status.listening { color: #17c0eb; }
+        .status.speaking { color: #ffa502; }
+        .status.connecting { color: #a55eea; }
+        .status.error { color: #ff6b6b; }
+
+        .volume-indicator {
+            width: 200px;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 0 auto;
+        }
+
+        .volume-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #2ed573, #ffa502, #ff6b6b);
+            width: 0%;
+            transition: width 0.1s ease;
+            border-radius: 4px;
+        }
+
+        .conversation-display {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 20px;
+            overflow-y: auto;
+            margin: 20px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            max-height: 300px;
+        }
+
+        .message {
+            padding: 12px 16px;
+            border-radius: 12px;
+            max-width: 80%;
+            word-wrap: break-word;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .message.user {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            align-self: flex-end;
+            margin-left: auto;
+        }
+
+        .message.ai {
+            background: linear-gradient(45deg, #2ed573, #17c0eb);
+            align-self: flex-start;
+            margin-right: auto;
+        }
+
+        .message.system {
+            background: rgba(255, 255, 255, 0.1);
+            align-self: center;
+            font-style: italic;
+            opacity: 0.8;
+            font-size: 0.9rem;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .control-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+            backdrop-filter: blur(5px);
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .control-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error {
+            color: #ff6b6b;
+            background: rgba(255, 107, 107, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            border: 1px solid rgba(255, 107, 107, 0.3);
+            font-size: 0.9rem;
+        }
+
+        .instructions {
+            margin-top: 20px;
+            opacity: 0.7;
+            font-size: 0.8rem;
+            line-height: 1.4;
+        }
+
+        .live-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 107, 107, 0.2);
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            margin-bottom: 10px;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: #ff6b6b;
+            border-radius: 50%;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 30px 20px;
+                height: 85vh;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .mic-button {
+                width: 80px;
+                height: 80px;
+                font-size: 2rem;
+            }
+
+            .conversation-display {
+                max-height: 200px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 Live AI Assistant</h1>
+        <p class="subtitle">Real-time conversation with Google Gemini</p>
+        
+        <div class="conversation-area">
+            <div class="status-section">
+                <div class="live-indicator" id="liveIndicator" style="display: none;">
+                    <div class="live-dot"></div>
+                    LIVE
+                </div>
+                
+                <button class="mic-button" id="micButton">
+                    🎤
+                </button>
+                
+                <div class="status ready" id="status">Click to start live conversation</div>
+                
+                <div class="volume-indicator">
+                    <div class="volume-bar" id="volumeBar"></div>
+                </div>
+            </div>
+            
+            <div class="conversation-display" id="conversationDisplay">
+                <div class="message system">Welcome! Click the microphone to start a live conversation with AI.</div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="control-btn" id="clearBtn">Clear Chat</button>
+            <button class="control-btn" id="muteBtn">Mute</button>
+            <button class="control-btn" id="testBtn">Test Text</button>
+            <button class="control-btn" id="testAudioBtn">Test Audio</button>
+            <button class="control-btn" id="settingsBtn">Settings</button>
+        </div>
+        
+        <div class="instructions">
+            <strong>Live Mode:</strong> Speak naturally - AI responds immediately like a real conversation!<br>
+            <small>If audio isn't working, try the "Test Text" button to verify connection.</small>
+        </div>
+    </div>
+
+    <script>
+        class LiveVoiceAssistant {
+            constructor() {
+                this.socket = io();
+                this.mediaRecorder = null;
+                this.audioContext = null;
+                this.analyser = null;
+                this.microphone = null;
+                this.isConversationActive = false;
+                this.isListening = false;
+                this.isMuted = false;
+                this.audioChunks = [];
+                this.streamingInterval = null;
+                this.audioWorkletNode = null;
+                
+                this.initializeElements();
+                this.setupEventListeners();
+                this.setupSocketListeners();
+                this.checkMicrophonePermission();
+            }
+            
+            initializeElements() {
+                this.micButton = document.getElementById('micButton');
+                this.status = document.getElementById('status');
+                this.conversationDisplay = document.getElementById('conversationDisplay');
+                this.volumeBar = document.getElementById('volumeBar');
+                this.liveIndicator = document.getElementById('liveIndicator');
+                this.clearBtn = document.getElementById('clearBtn');
+                this.muteBtn = document.getElementById('muteBtn');
+                this.testBtn = document.getElementById('testBtn');
+                this.testAudioBtn = document.getElementById('testAudioBtn');
+                this.settingsBtn = document.getElementById('settingsBtn');
+            }
+            
+            setupEventListeners() {
+                this.micButton.addEventListener('click', () => this.toggleConversation());
+                this.clearBtn.addEventListener('click', () => this.clearConversation());
+                this.muteBtn.addEventListener('click', () => this.toggleMute());
+                this.testBtn.addEventListener('click', () => this.testTextInput());
+                this.testAudioBtn.addEventListener('click', () => this.testAudioPlayback());
+                this.settingsBtn.addEventListener('click', () => this.showSettings());
+            }
+            
+            setupSocketListeners() {
+                this.socket.on('connect', () => {
+                    console.log('Connected to server');
+                    this.updateStatus('Connected - Ready for live conversation!', 'ready');
+                });
+                
+                this.socket.on('disconnect', () => {
+                    console.log('Disconnected from server');
+                    this.updateStatus('Disconnected from server', 'error');
+                    this.stopConversation();
+                });
+                
+                this.socket.on('setup-complete', () => {
+                    console.log('Gemini setup completed');
+                    this.addMessage('AI is ready to chat!', 'system');
+                });
+                
+                this.socket.on('conversation-started', () => {
+                    console.log('Live conversation started');
+                    this.isConversationActive = true;
+                    this.liveIndicator.style.display = 'inline-flex';
+                    this.updateStatus('Live conversation active - Speak naturally!', 'listening');
+                    this.micButton.classList.add('listening');
+                    this.startContinuousListening();
+                });
+                
+                this.socket.on('conversation-ended', () => {
+                    console.log('Live conversation ended');
+                    this.stopConversation();
+                });
+                
+                this.socket.on('user-transcription', (data) => {
+                    console.log('User said:', data.text);
+                    this.addMessage(data.text, 'user');
+                });
+                
+                this.socket.on('ai-response', (data) => {
+                    console.log('💬 AI Response:', data.text);
+                    this.addMessage(data.text, 'ai');
+                });
+                
+                this.socket.on('ai-audio-response', (data) => {
+                    console.log('🎵 Received combined AI audio response', data);
+                    console.log('📊 Audio data details:', {
+                        type: typeof data,
+                        hasAudio: !!data.audio,
+                        audioLength: data.audio ? data.audio.length : 'N/A',
+                        format: data.format
+                    });
+                    this.playAudioResponse(data);
+                });
+                
+                this.socket.on('generation-complete', () => {
+                    console.log('Generation completed');
+                    // AI has finished generating the response
+                });
+                
+                this.socket.on('turn-complete', () => {
+                    console.log('Turn completed');
+                    if (this.isConversationActive) {
+                        this.updateStatus('Listening...', 'listening');
+                        this.micButton.classList.remove('speaking');
+                        this.micButton.classList.add('listening');
+                    }
+                });
+                
+                this.socket.on('turn-interrupted', () => {
+                    console.log('Turn interrupted');
+                    if (this.isConversationActive) {
+                        this.updateStatus('Listening...', 'listening');
+                        this.micButton.classList.remove('speaking');
+                        this.micButton.classList.add('listening');
+                    }
+                });
+                
+                this.socket.on('error', (error) => {
+                    console.error('Server error:', error);
+                    this.showError('Error: ' + error.message);
+                    this.stopConversation();
+                });
+            }
+            
+            async checkMicrophonePermission() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    stream.getTracks().forEach(track => track.stop());
+                    this.updateStatus('Microphone ready - Click to start!', 'ready');
+                } catch (error) {
+                    this.showError('Microphone access denied. Please allow microphone access and refresh the page.');
+                }
+            }
+            
+            async toggleConversation() {
+                if (!this.isConversationActive) {
+                    await this.startConversation();
+                } else {
+                    this.stopConversation();
+                }
+            }
+            
+            async startConversation() {
+                try {
+                    this.updateStatus('Starting live conversation...', 'connecting');
+                    this.micButton.classList.add('connecting');
+                    this.micButton.innerHTML = '⏳';
+                    
+                    // Start the live conversation with server
+                    this.socket.emit('start-conversation');
+                    
+                } catch (error) {
+                    console.error('Error starting conversation:', error);
+                    this.showError('Failed to start conversation: ' + error.message);
+                    this.resetButton();
+                }
+            }
+            
+            async startContinuousListening() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: {
+                            sampleRate: 16000,
+                            channelCount: 1,
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        } 
+                    });
+                    
+                    this.setupAudioAnalysis(stream);
+                    this.setupAudioStreaming(stream);
+                    
+                    this.micButton.innerHTML = '🎙️';
+                    
+                } catch (error) {
+                    console.error('Error starting continuous listening:', error);
+                    this.showError('Failed to start listening: ' + error.message);
+                    this.stopConversation();
+                }
+            }
+            
+            setupAudioAnalysis(stream) {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                this.analyser = this.audioContext.createAnalyser();
+                this.microphone = this.audioContext.createMediaStreamSource(stream);
+                
+                this.analyser.fftSize = 256;
+                this.microphone.connect(this.analyser);
+                
+                this.visualizeAudio();
+            }
+            
+            setupAudioStreaming(stream) {
+                // Create a MediaRecorder for continuous streaming
+                this.mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'audio/webm;codecs=opus'
+                });
+                
+                this.mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0 && this.isConversationActive && !this.isMuted) {
+                        this.processAndStreamAudio(event.data);
+                    }
+                };
+                
+                // Start recording in smaller chunks for better real-time performance
+                this.mediaRecorder.start(100); // 100ms chunks for better responsiveness
+                
+                // Keep the stream alive
+                this.streamingInterval = setInterval(() => {
+                    if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+                        this.mediaRecorder.requestData();
+                    }
+                }, 100);
+            }
+            
+            async processAndStreamAudio(audioBlob) {
+                //try {
+                    const arrayBuffer = await audioBlob.arrayBuffer();
+                    console.log('arrayBuffer', arrayBuffer);
+                    // Create a new audio context for processing
+                    const processingContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const audioBuffer = await processingContext.decodeAudioData(arrayBuffer);
+                    console.log('audioBuffer', audioBuffer);
+                    // Resample to 16kHz if needed
+                    const targetSampleRate = 16000;
+                    let processedBuffer = audioBuffer;
+                    
+                    if (audioBuffer.sampleRate !== targetSampleRate) {
+                        console.log(`🔄 Resampling from ${audioBuffer.sampleRate}Hz to ${targetSampleRate}Hz`);
+                        processedBuffer = await this.resampleAudioBuffer(audioBuffer, targetSampleRate);
+                    }
+                    console.log('processedBuffer', processedBuffer);
+                    // Convert to PCM and base64
+                    const pcmData = this.audioBufferToPCM(processedBuffer);
+                    const base64Audio = this.arrayBufferToBase64(pcmData);
+                    
+                    // Stream to server
+                    this.socket.emit('audio-stream', base64Audio);
+                    
+                    // Close the processing context
+                    processingContext.close();
+                    
+                //} catch (error) {
+                  //  console.error('Error processing audio stream:', error);
+                    // Don't show error to user for individual chunks, just log it
+               // }
+            }
+            
+            async resampleAudioBuffer(audioBuffer, targetSampleRate) {
+                try {
+                    const offlineContext = new OfflineAudioContext(
+                        1, // mono
+                        audioBuffer.duration * targetSampleRate,
+                        targetSampleRate
+                    );
+                    
+                    const source = offlineContext.createBufferSource();
+                    source.buffer = audioBuffer;
+                    source.connect(offlineContext.destination);
+                    source.start();
+                    
+                    const resampledBuffer = await offlineContext.startRendering();
+                    console.log(`✅ Resampling complete: ${resampledBuffer.sampleRate}Hz, ${resampledBuffer.length} samples`);
+                    return resampledBuffer;
+                } catch (error) {
+                    console.error('Error resampling audio:', error);
+                    // Return original buffer if resampling fails
+                    return audioBuffer;
+                }
+            }
+            
+            audioBufferToPCM(audioBuffer) {
+                const length = audioBuffer.length;
+                console.log('audiobuffer length:', length);
+                const pcm = new Int16Array(length);
+                const channelData = audioBuffer.getChannelData(0);
+                
+                for (let i = 0; i < length; i++) {
+                    // Convert float32 to int16
+                    const sample = Math.max(-1, Math.min(1, channelData[i]));
+                    pcm[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+                }
+                
+                return pcm.buffer;
+            }
+            
+            arrayBufferToBase64(buffer) {
+                const bytes = new Uint8Array(buffer);
+                let binary = '';
+                for (let i = 0; i < bytes.byteLength; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                return btoa(binary);
+            }
+            
+            visualizeAudio() {
+                if (!this.isConversationActive || !this.analyser) return;
+                
+                const bufferLength = this.analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                
+                this.analyser.getByteFrequencyData(dataArray);
+                
+                const average = dataArray.reduce((a, b) => a + b) / bufferLength;
+                const percentage = (average / 255) * 100;
+                
+                this.volumeBar.style.width = percentage + '%';
+                
+                requestAnimationFrame(() => this.visualizeAudio());
+            }
+            
+            async playAudioResponse(audioData) {
+                try {
+                    console.log('🎵 Playing AI audio response...', typeof audioData);
+                    
+                    // Handle different audio data formats
+                    let base64Audio;
+                    let format = 'wav'; // default
+                    
+                    if (typeof audioData === 'string') {
+                        base64Audio = audioData;
+                    } else if (audioData.audio) {
+                        base64Audio = audioData.audio;
+                        format = audioData.format || 'wav';
+                    } else {
+                        console.error('❌ Invalid audio data format:', audioData);
+                        return;
+                    }
+                    
+                    console.log('🔧 Processing audio data:', { format, length: base64Audio.length });
+                    
+                    // Update UI to show AI is speaking
+                    this.updateStatus('AI is speaking...', 'speaking');
+                    this.micButton.classList.remove('listening');
+                    this.micButton.classList.add('speaking');
+                    
+                    // Try multiple playback methods in order
+                    const playbackMethods = [
+                        () => this.playWithWebAudio(base64Audio),
+                        () => this.playWithHTMLAudio(base64Audio),
+                        () => this.playWithAudioBuffer(base64Audio)
+                    ];
+                    
+                    let playbackSuccessful = false;
+                    
+                    for (let i = 0; i < playbackMethods.length && !playbackSuccessful; i++) {
+                        try {
+                            console.log(`🔄 Trying playback method ${i + 1}...`);
+                            await playbackMethods[i]();
+                            playbackSuccessful = true;
+                            console.log(`✅ Playback method ${i + 1} successful`);
+                        } catch (error) {
+                            console.warn(`⚠️ Playback method ${i + 1} failed:`, error.message);
+                            if (i === playbackMethods.length - 1) {
+                                throw error; // Re-throw if all methods failed
+                            }
+                        }
+                    }
+                    
+                } catch (error) {
+                    console.error('❌ All audio playback methods failed:', error);
+                    this.showError('Failed to play AI audio response: ' + error.message);
+                    
+                    // Return to listening state on error
+                    if (this.isConversationActive) {
+                        this.updateStatus('Listening...', 'listening');
+                        this.micButton.classList.remove('speaking');
+                        this.micButton.classList.add('listening');
+                    }
+                }
+            }
+            
+            async playWithWebAudio(base64Audio) {
+                console.log('🎵 Method 1: Web Audio API');
+                
+                try {
+                    // Decode base64 to array buffer
+                    const binaryString = atob(base64Audio);
+                    const arrayBuffer = new ArrayBuffer(binaryString.length);
+                    const uint8Array = new Uint8Array(arrayBuffer);
+                    for (let i = 0; i < binaryString.length; i++) {
+                        uint8Array[i] = binaryString.charCodeAt(i);
+                    }
+                    
+                    console.log('✅ Audio buffer created, length:', arrayBuffer.byteLength);
+                    
+                    // Validate WAV header before attempting to decode
+                    const dataView = new DataView(arrayBuffer);
+                    const riff = String.fromCharCode(dataView.getUint8(0), dataView.getUint8(1), dataView.getUint8(2), dataView.getUint8(3));
+                    const wave = String.fromCharCode(dataView.getUint8(8), dataView.getUint8(9), dataView.getUint8(10), dataView.getUint8(11));
+                    
+                    if (riff !== 'RIFF' || wave !== 'WAVE') {
+                        throw new Error('Invalid WAV format - missing RIFF/WAVE headers');
+                    }
+                    
+                    console.log('✅ WAV headers validated');
+                    
+                    // Create or resume audio context
+                    if (!this.audioContext || this.audioContext.state === 'closed') {
+                        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    }
+                    
+                    if (this.audioContext.state === 'suspended') {
+                        await this.audioContext.resume();
+                    }
+                    
+                    console.log('🔄 Decoding audio data with Web Audio API...');
+                    
+                    // Decode audio data with timeout
+                    const audioBuffer = await Promise.race([
+                        this.audioContext.decodeAudioData(arrayBuffer.slice()),
+                        new Promise((_, reject) => 
+                            setTimeout(() => reject(new Error('Audio decoding timeout')), 5000)
+                        )
+                    ]);
+                    
+                    console.log('✅ Audio decoded successfully:', {
+                        duration: audioBuffer.duration,
+                        sampleRate: audioBuffer.sampleRate,
+                        channels: audioBuffer.numberOfChannels,
+                        length: audioBuffer.length
+                    });
+                    
+                    // Create audio source and play
+                    const source = this.audioContext.createBufferSource();
+                    source.buffer = audioBuffer;
+                    source.connect(this.audioContext.destination);
+                    
+                    return new Promise((resolve, reject) => {
+                        source.onended = () => {
+                            console.log('✅ Web Audio playback ended');
+                            this.onAudioPlaybackEnded();
+                            resolve();
+                        };
+                        
+                        source.onerror = (error) => {
+                            console.error('❌ Web Audio source error:', error);
+                            reject(new Error('Web Audio source error'));
+                        };
+                        
+                        console.log('🎵 Starting Web Audio playback...');
+                        source.start(0);
+                        
+                        // Set a timeout for playback
+                        setTimeout(() => {
+                            if (source.context.state === 'running') {
+                                console.log('⏰ Audio playback timeout - assuming completion');
+                                this.onAudioPlaybackEnded();
+                                resolve();
+                            }
+                        }, (audioBuffer.duration + 1) * 1000);
+                    });
+                    
+                } catch (error) {
+                    console.error('❌ Web Audio API method failed:', error);
+                    throw error;
+                }
+            }
+            
+            async playWithHTMLAudio(base64Audio) {
+                console.log('🎵 Method 2: HTML Audio Element');
+                
+                try {
+                    // Create blob from base64
+                    const binaryString = atob(base64Audio);
+                    const audioArray = new Uint8Array(binaryString.length);
+                    for (let i = 0; i < binaryString.length; i++) {
+                        audioArray[i] = binaryString.charCodeAt(i);
+                    }
+                    
+                    // Try different MIME types for better compatibility
+                    const mimeTypes = ['audio/wav', 'audio/x-wav', 'audio/wave', 'audio/pcm', 'audio/pcm;rate=24000'];
+                    let audioBlob = null;
+                    let workingMimeType = null;
+                    
+                    for (const mimeType of mimeTypes) {
+                        audioBlob = new Blob([audioArray], { type: mimeType });
+                        const audio = new Audio();
+                        
+                        // Test if this MIME type is supported
+                        const canPlay = audio.canPlayType(mimeType);
+                        if (canPlay === 'probably' || canPlay === 'maybe') {
+                            workingMimeType = mimeType;
+                            console.log(`✅ Using MIME type: ${mimeType} (support: ${canPlay})`);
+                            break;
+                        }
+                    }
+                    
+                    if (!workingMimeType) {
+                        // Fallback to default
+                        audioBlob = new Blob([audioArray], { type: 'audio/wav' });
+                        workingMimeType = 'audio/wav';
+                        console.log('⚠️ Using fallback MIME type: audio/wav');
+                    }
+                    
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    const audio = new Audio(audioUrl);
+                    audio.volume = 1.0;
+                    audio.preload = 'auto';
+                    
+                    return new Promise((resolve, reject) => {
+                        const cleanup = () => {
+                            URL.revokeObjectURL(audioUrl);
+                        };
+                        
+                        let hasStartedPlaying = false;
+                        
+                        audio.onloadstart = () => {
+                            console.log('🔄 HTML Audio loading started');
+                        };
+                        
+                        audio.oncanplay = () => {
+                            console.log('✅ HTML Audio ready to play');
+                        };
+                        
+                        audio.onplay = () => {
+                            console.log('🎵 HTML Audio playback started');
+                            hasStartedPlaying = true;
+                        };
+                        
+                        audio.onended = () => {
+                            console.log('✅ HTML Audio playback ended');
+                            cleanup();
+                            this.onAudioPlaybackEnded();
+                            resolve();
+                        };
+                        
+                        audio.onerror = (error) => {
+                            console.error('❌ HTML Audio error:', error, audio.error);
+                            cleanup();
+                            reject(new Error(`HTML Audio playback failed: ${audio.error ? audio.error.message : 'Unknown error'}`));
+                        };
+                        
+                        audio.onabort = () => {
+                            console.warn('⚠️ HTML Audio playback aborted');
+                            cleanup();
+                            reject(new Error('HTML Audio playback aborted'));
+                        };
+                        
+                        audio.onstalled = () => {
+                            console.warn('⚠️ HTML Audio playback stalled');
+                        };
+                        
+                        // Set a timeout in case the audio doesn't load or play
+                        const timeoutId = setTimeout(() => {
+                            if (!hasStartedPlaying) {
+                                console.error('⏰ HTML Audio failed to start within timeout');
+                                cleanup();
+                                reject(new Error('HTML Audio failed to start within timeout'));
+                            }
+                        }, 10000); // 10 second timeout
+                        
+                        // Clear timeout when audio starts playing
+                        audio.addEventListener('play', () => {
+                            clearTimeout(timeoutId);
+                        });
+                        
+                        console.log('🎵 Starting HTML Audio playback...');
+                        audio.play().catch((playError) => {
+                            console.error('❌ HTML Audio play() failed:', playError);
+                            cleanup();
+                            clearTimeout(timeoutId);
+                            reject(new Error(`HTML Audio play failed: ${playError.message}`));
+                        });
+                    });
+                    
+                } catch (error) {
+                    console.error('❌ HTML Audio method failed:', error);
+                    throw error;
+                }
+            }
+            
+            async playWithAudioBuffer(base64Audio) {
+                console.log('🎵 Method 3: Raw Audio Buffer Processing');
+                
+                // This method tries to create a simple audio buffer manually
+                const binaryString = atob(base64Audio);
+                const arrayBuffer = new ArrayBuffer(binaryString.length);
+                const uint8Array = new Uint8Array(arrayBuffer);
+                for (let i = 0; i < binaryString.length; i++) {
+                    uint8Array[i] = binaryString.charCodeAt(i);
+                }
+                
+                // Try to parse WAV header manually
+                const dataView = new DataView(arrayBuffer);
+                
+                // Check for WAV signature
+                const riff = String.fromCharCode(dataView.getUint8(0), dataView.getUint8(1), dataView.getUint8(2), dataView.getUint8(3));
+                if (riff !== 'RIFF') {
+                    throw new Error('Invalid WAV file - missing RIFF header');
+                }
+                
+                const wave = String.fromCharCode(dataView.getUint8(8), dataView.getUint8(9), dataView.getUint8(10), dataView.getUint8(11));
+                if (wave !== 'WAVE') {
+                    throw new Error('Invalid WAV file - missing WAVE header');
+                }
+                
+                // Find data chunk
+                let dataOffset = 12;
+                let dataSize = 0;
+                
+                while (dataOffset < arrayBuffer.byteLength - 8) {
+                    const chunkId = String.fromCharCode(
+                        dataView.getUint8(dataOffset),
+                        dataView.getUint8(dataOffset + 1),
+                        dataView.getUint8(dataOffset + 2),
+                        dataView.getUint8(dataOffset + 3)
+                    );
+                    
+                    const chunkSize = dataView.getUint32(dataOffset + 4, true);
+                    
+                    if (chunkId === 'data') {
+                        dataOffset += 8;
+                        dataSize = chunkSize;
+                        break;
+                    }
+                    
+                    dataOffset += 8 + chunkSize;
+                }
+                
+                if (dataSize === 0) {
+                    throw new Error('No data chunk found in WAV file');
+                }
+                
+                console.log('📊 WAV data found:', { dataOffset, dataSize });
+                
+                // Extract PCM data and create audio buffer manually
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const sampleRate = 24000; // Known from server
+                const channels = 1; // Mono
+                const samples = dataSize / 2; // 16-bit samples
+                
+                const audioBuffer = audioContext.createBuffer(channels, samples, sampleRate);
+                const channelData = audioBuffer.getChannelData(0);
+                
+                // Convert 16-bit PCM to float32
+                for (let i = 0; i < samples; i++) {
+                    const sample = dataView.getInt16(dataOffset + i * 2, true);
+                    channelData[i] = sample / 32768.0; // Convert to -1.0 to 1.0 range
+                }
+                
+                console.log('✅ Manual audio buffer created:', {
+                    duration: audioBuffer.duration,
+                    sampleRate: audioBuffer.sampleRate,
+                    samples: samples
+                });
+                
+                // Play the manually created buffer
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContext.destination);
+                
+                return new Promise((resolve, reject) => {
+                    source.onended = () => {
+                        console.log('✅ Manual audio buffer playback ended');
+                        audioContext.close();
+                        this.onAudioPlaybackEnded();
+                        resolve();
+                    };
+                    
+                    source.onerror = (error) => {
+                        console.error('❌ Manual audio buffer error:', error);
+                        audioContext.close();
+                        reject(new Error('Manual audio buffer playback failed'));
+                    };
+                    
+                    console.log('🎵 Starting manual audio buffer playback...');
+                    source.start(0);
+                });
+            }
+            
+            onAudioPlaybackEnded() {
+                // Return to listening state if conversation is still active
+                if (this.isConversationActive) {
+                    this.updateStatus('Listening...', 'listening');
+                    this.micButton.classList.remove('speaking');
+                    this.micButton.classList.add('listening');
+                }
+            }
+            
+            testTextInput() {
+                if (!this.isConversationActive) {
+                    this.showError('Please start a conversation first');
+                    return;
+                }
+                
+                const testMessage = prompt('Enter a test message to send to AI:');
+                if (testMessage) {
+                    console.log('Sending test message:', testMessage);
+                    this.addMessage(testMessage, 'user');
+                    this.socket.emit('send-text', testMessage);
+                }
+            }
+            
+            testAudioPlayback() {
+                console.log('🧪 Testing audio playback with generated tone...');
+                
+                try {
+                    // Create a simple test tone using Web Audio API
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const sampleRate = 24000;
+                    const duration = 1; // 1 second
+                    const frequency = 440; // A4 note
+                    const samples = sampleRate * duration;
+                    
+                    // Create audio buffer
+                    const audioBuffer = audioContext.createBuffer(1, samples, sampleRate);
+                    const channelData = audioBuffer.getChannelData(0);
+                    
+                    // Generate sine wave
+                    for (let i = 0; i < samples; i++) {
+                        const t = i / sampleRate;
+                        channelData[i] = Math.sin(2 * Math.PI * frequency * t) * 0.3; // 30% volume
+                    }
+                    
+                    console.log('🎵 Generated test audio buffer:', {
+                        duration: audioBuffer.duration,
+                        sampleRate: audioBuffer.sampleRate,
+                        channels: audioBuffer.numberOfChannels
+                    });
+                    
+                    // Play the test audio
+                    const source = audioContext.createBufferSource();
+                    source.buffer = audioBuffer;
+                    source.connect(audioContext.destination);
+                    
+                    source.onended = () => {
+                        console.log('✅ Test audio playback completed');
+                        audioContext.close();
+                    };
+                    
+                    console.log('🎵 Playing test audio...');
+                    source.start(0);
+                    
+                } catch (error) {
+                    console.error('❌ Error generating test audio:', error);
+                    this.showError('Failed to generate test audio: ' + error.message);
+                }
+            }
+            
+            stopConversation() {
+                this.isConversationActive = false;
+                this.liveIndicator.style.display = 'none';
+                
+                if (this.mediaRecorder) {
+                    this.mediaRecorder.stop();
+                    this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                    this.mediaRecorder = null;
+                }
+                
+                if (this.audioContext) {
+                    this.audioContext.close();
+                    this.audioContext = null;
+                }
+                
+                if (this.streamingInterval) {
+                    clearInterval(this.streamingInterval);
+                    this.streamingInterval = null;
+                }
+                
+                this.socket.emit('stop-conversation');
+                this.resetButton();
+                this.updateStatus('Conversation ended - Click to start again', 'ready');
+                this.volumeBar.style.width = '0%';
+            }
+            
+            resetButton() {
+                this.micButton.classList.remove('listening', 'speaking', 'connecting');
+                this.micButton.innerHTML = '🎤';
+            }
+            
+            addMessage(text, type) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${type}`;
+                messageDiv.textContent = text;
+                
+                this.conversationDisplay.appendChild(messageDiv);
+                this.conversationDisplay.scrollTop = this.conversationDisplay.scrollHeight;
+            }
+            
+            updateStatus(message, type) {
+                this.status.textContent = message;
+                this.status.className = `status ${type}`;
+            }
+            
+            showError(message) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error';
+                errorDiv.textContent = message;
+                
+                this.conversationDisplay.appendChild(errorDiv);
+                this.conversationDisplay.scrollTop = this.conversationDisplay.scrollHeight;
+                
+                setTimeout(() => {
+                    errorDiv.remove();
+                }, 5000);
+            }
+            
+            clearConversation() {
+                this.conversationDisplay.innerHTML = '<div class="message system">Conversation cleared. Continue speaking!</div>';
+            }
+            
+            toggleMute() {
+                this.isMuted = !this.isMuted;
+                this.muteBtn.textContent = this.isMuted ? 'Unmute' : 'Mute';
+                this.muteBtn.style.background = this.isMuted ? 'rgba(255, 107, 107, 0.3)' : 'rgba(255, 255, 255, 0.2)';
+                
+                if (this.isMuted) {
+                    this.addMessage('Microphone muted', 'system');
+                } else {
+                    this.addMessage('Microphone unmuted', 'system');
+                }
+            }
+            
+            showSettings() {
+                alert('Live conversation settings:\n\n• Speak naturally - no need to pause\n• AI responds immediately\n• Use mute button to temporarily stop input\n• Use "Test Text" to verify connection\n• Clear chat to reset conversation history');
+            }
+        }
+        
+        // Initialize the live voice assistant when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new LiveVoiceAssistant();
+        });
+    </script>
+</body>
+</html> 
