@@ -75,7 +75,7 @@ async function liveSendAudio(base64Audio) {
     session.sendRealtimeInput({
       audio: {
         data: base64Audio,
-        mimeType: "audio/pcm;rate=16000",
+        mimeType: "audio/pcm;rate=24000",
       },
     });
 
