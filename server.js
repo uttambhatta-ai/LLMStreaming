@@ -83,7 +83,7 @@ io.on('connection', (socket) => {
       session.geminiSession.sendRealtimeInput({
         audio: {
           data: audioData,
-          mimeType: "audio/pcm;rate=16000",
+          mimeType: "audio/pcm;rate=24000",
         },
       });
       
@@ -270,9 +270,11 @@ function handleGeminiMessage(socket, message) {
       // Handle model turn (start of AI response)
       if (message.serverContent.modelTurn) {
         console.log("🤖 Model turn detected");
-        // Start collecting audio chunks
-        session.isCollectingAudio = true;
-        session.audioChunks = [];
+        // If not already collecting, start; otherwise continue accumulating
+        if (!session.isCollectingAudio) {
+          session.isCollectingAudio = true;
+          session.audioChunks = [];
+        }
         
         // Handle text response
         if (message.serverContent.modelTurn.parts) {
@@ -282,10 +284,11 @@ function handleGeminiMessage(socket, message) {
               socket.emit('ai-response', { text: part.text });
             }
             
-            // Collect audio chunks instead of playing immediately
-            if (part.inlineData && part.inlineData.mimeType === "audio/pcm;rate=24000") {
-              console.log("🔊 Collecting AI audio chunk...");
+            // Collect audio chunks instead of processing immediately
+            if (part.inlineData && part.inlineData.mimeType && part.inlineData.mimeType.startsWith("audio/")) {
+              console.log("🔊 Collecting AI audio chunk...", part.inlineData.mimeType);
               session.audioChunks.push(part.inlineData.data);
+              session.lastAudioMimeType = part.inlineData.mimeType;
             }
           }
         }
@@ -302,10 +305,19 @@ function handleGeminiMessage(socket, message) {
             // Combine all audio chunks
             const combinedAudioData = session.audioChunks.join('');
             
+            // Detect sample rate from mimeType of first chunk if available
+            let detectedSampleRate = 24000;
+            if (session.lastAudioMimeType && session.lastAudioMimeType.includes('rate=')) {
+              const rateMatch = session.lastAudioMimeType.match(/rate=(\d+)/);
+              if (rateMatch) {
+                detectedSampleRate = parseInt(rateMatch[1],10);
+              }
+            }
+            
             // Convert combined PCM to WAV (pass base64 string directly)
             console.log("🔧 Converting combined PCM to WAV:", combinedAudioData.length, "base64 chars");
             
-            const wavBuffer = pcmToWav(combinedAudioData, 24000, 1, 16);
+            const wavBuffer = pcmToWav(combinedAudioData, detectedSampleRate, 1, 16);
             const wavBase64 = Buffer.from(wavBuffer).toString('base64');
             
             console.log("✅ Combined WAV conversion complete:", wavBuffer.byteLength, "bytes");
@@ -323,6 +335,8 @@ function handleGeminiMessage(socket, message) {
           } catch (error) {
             console.error("❌ Error processing combined audio:", error);
           }
+        } else {
+          console.log("⚠️ No audio chunks to combine for", socket.id);
         }
       }
 
